@@ -20,10 +20,12 @@ jobs:
       run: |
         sudo ln -s /usr/bin/python3 /usr/bin/python || true
 
-    # (O passo de licenças foi removido, a mágica acontece na linha abaixo)
-
+    # AQUI É A MÁGICA PARA RESOLVER DE VEZ
     - name: Build APK
-      run: buildozer -v android debug -- --accept-license
+      run: |
+        mkdir -p $HOME/.local/share/buildozer/android/platform/android-sdk/licenses
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > $HOME/.local/share/buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        buildozer -v android debug
     
     - name: Upload APK
       uses: actions/upload-artifact@v4
