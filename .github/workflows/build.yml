@@ -11,11 +11,16 @@ jobs:
     
     - name: Install dependencies
       run: |
-        sudo apt update
-        sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
-        pip install --user buildozer
+        sudo apt update -y
+        sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
+        pip install --user buildozer cython
         echo "$HOME/.local/bin" >> $GITHUB_PATH
-    
+        
+    - name: Setup Python path (for Buildozer)
+      run: |
+        # Buildozer padrão às vezes procura 'python'. Isso cria um link simbólico para o python3
+        sudo ln -s /usr/bin/python3 /usr/bin/python || true
+
     - name: Build APK
       run: buildozer -v android debug
     
@@ -24,4 +29,3 @@ jobs:
       with:
         name: Prometheus-APK
         path: bin/*.apk
-        
