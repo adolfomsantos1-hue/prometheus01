@@ -18,6 +18,17 @@ jobs:
       run: |
         sudo ln -s /usr/bin/python3 /usr/bin/python || true
 
+    # O buildozer/python-for-android procura o sdkmanager no formato ANTIGO (tools/bin/sdkmanager),
+    # que o Google não inclui mais nos pacotes atuais (só vem em cmdline-tools/).
+    # Baixamos o pacote legado que ainda mantém essa estrutura, no caminho exato esperado.
+    - name: Install legacy sdkmanager (tools/bin path)
+      run: |
+        mkdir -p $HOME/.buildozer/android/platform/android-sdk
+        cd $HOME/.buildozer/android/platform/android-sdk
+        wget -q https://dl.google.com/android/repository/sdk-tools-linux-4333796.zip -O sdk-tools.zip
+        unzip -q sdk-tools.zip
+        rm sdk-tools.zip
+
     # Aceita as licenças do Android SDK no caminho CORRETO que o buildozer realmente usa
     - name: Pre-accept Android SDK licenses
       run: |
