@@ -18,16 +18,27 @@ jobs:
       run: |
         sudo ln -s /usr/bin/python3 /usr/bin/python || true
 
-    # O buildozer/python-for-android procura o sdkmanager no formato ANTIGO (tools/bin/sdkmanager),
-    # que o Google não inclui mais nos pacotes atuais (só vem em cmdline-tools/).
-    # Baixamos o pacote legado que ainda mantém essa estrutura, no caminho exato esperado.
-    - name: Install legacy sdkmanager (tools/bin path)
+    # O buildozer/python-for-android procura o sdkmanager no formato ANTIGO (tools/bin/sdkmanager).
+    # O sdkmanager desse formato antigo é quebrado no Java 17 (precisa do JAXB, removido do JDK moderno).
+    # Solução: baixamos o cmdline-tools MODERNO (que funciona bem com Java 17) e criamos um "atalho"
+    # (wrapper script) no caminho antigo, apontando para o binário moderno.
+    - name: Install modern sdkmanager with legacy path shim
       run: |
-        mkdir -p $HOME/.buildozer/android/platform/android-sdk
-        cd $HOME/.buildozer/android/platform/android-sdk
-        wget -q https://dl.google.com/android/repository/sdk-tools-linux-4333796.zip -O sdk-tools.zip
-        unzip -q sdk-tools.zip
-        rm sdk-tools.zip
+        SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
+        mkdir -p $SDK_ROOT/cmdline-tools
+
+        # Descobre dinamicamente a URL mais recente do cmdline-tools direto na página oficial do Google
+        TOOLS_URL=$(curl -s https://developer.android.com/studio | grep -o 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9]*_latest.zip' | head -1)
+        echo "Baixando: $TOOLS_URL"
+        wget -q "$TOOLS_URL" -O cmdline-tools.zip
+        unzip -q cmdline-tools.zip -d $SDK_ROOT/cmdline-tools
+        mv $SDK_ROOT/cmdline-tools/cmdline-tools $SDK_ROOT/cmdline-tools/latest
+        rm cmdline-tools.zip
+
+        # Cria o atalho no caminho antigo (tools/bin/sdkmanager) que o buildozer procura
+        mkdir -p $SDK_ROOT/tools/bin
+        ln -s $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager $SDK_ROOT/tools/bin/sdkmanager
+        ln -s $SDK_ROOT/cmdline-tools/latest/bin/avdmanager $SDK_ROOT/tools/bin/avdmanager
 
     # Aceita as licenças do Android SDK no caminho CORRETO que o buildozer realmente usa
     - name: Pre-accept Android SDK licenses
