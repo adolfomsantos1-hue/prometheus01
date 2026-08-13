@@ -21,6 +21,10 @@ jobs:
         # Buildozer padrão às vezes procura 'python'. Isso cria um link simbólico para o python3
         sudo ln -s /usr/bin/python3 /usr/bin/python || true
 
+    - name: Accept Android licenses
+      run: |
+        yes | $HOME/.local/share/buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses
+
     - name: Build APK
       run: buildozer -v android debug
     
