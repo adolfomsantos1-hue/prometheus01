@@ -7,12 +7,42 @@ jobs:
     steps:
     - uses: actions/checkout@v5
 
+    # Runners do GitHub vêm com ~14GB livres, mas builds Android (SDK+NDK+Gradle) facilmente
+    # passam disso e o job morre com "No space left on device" sem aviso claro no log.
+    # Removemos ferramentas pré-instaladas que não usamos para abrir espaço.
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk /opt/ghc /opt/hostedtoolcache/CodeQL || true
+        sudo docker image prune -a -f || true
+
+    # Cacheia o SDK/NDK/gradle já baixados entre execuções. Isso não evita erros de código,
+    # mas evita re-baixar ~2GB de NDK toda vez, o que reduz muito o tempo de cada tentativa
+    # e a chance de falha por timeout/conexão.
+    - name: Cache buildozer global directory
+      uses: actions/cache@v4
+      with:
+        path: ~/.buildozer
+        key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+
+    - name: Cache application buildozer directory
+      uses: actions/cache@v4
+      with:
+        path: .buildozer
+        key: buildozer-app-${{ hashFiles('buildozer.spec') }}
+
     - name: Install dependencies
       run: |
         sudo apt update -y
-        sudo apt install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
-        pip install --user buildozer cython
+        sudo apt install -y \
+          git zip unzip openjdk-17-jdk python3-pip \
+          autoconf autopoint automake libtool libltdl-dev pkg-config \
+          zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 \
+          cmake libffi-dev libssl-dev build-essential ccache \
+          libltdl7 m4 gettext
+        # cython 3.x pode quebrar builds antigos do Kivy; travando numa faixa estável e testada.
+        pip install --user buildozer "cython<3.1" sh
         echo "$HOME/.local/bin" >> $GITHUB_PATH
+        echo "JAVA_HOME=/usr/lib/jvm/temurin-17-jdk-amd64" >> $GITHUB_ENV
 
     - name: Setup Python path (for Buildozer)
       run: |
@@ -27,18 +57,19 @@ jobs:
         SDK_ROOT=$HOME/.buildozer/android/platform/android-sdk
         mkdir -p $SDK_ROOT/cmdline-tools
 
-        # Descobre dinamicamente a URL mais recente do cmdline-tools direto na página oficial do Google
-        TOOLS_URL=$(curl -s https://developer.android.com/studio | grep -o 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9]*_latest.zip' | head -1)
-        echo "Baixando: $TOOLS_URL"
-        wget -q "$TOOLS_URL" -O cmdline-tools.zip
-        unzip -q cmdline-tools.zip -d $SDK_ROOT/cmdline-tools
-        mv $SDK_ROOT/cmdline-tools/cmdline-tools $SDK_ROOT/cmdline-tools/latest
-        rm cmdline-tools.zip
+        if [ ! -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+          TOOLS_URL=$(curl -s https://developer.android.com/studio | grep -o 'https://dl.google.com/android/repository/commandlinetools-linux-[0-9]*_latest.zip' | head -1)
+          echo "Baixando: $TOOLS_URL"
+          wget -q "$TOOLS_URL" -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d $SDK_ROOT/cmdline-tools
+          mv $SDK_ROOT/cmdline-tools/cmdline-tools $SDK_ROOT/cmdline-tools/latest
+          rm cmdline-tools.zip
+        fi
 
         # Cria o atalho no caminho antigo (tools/bin/sdkmanager) que o buildozer procura
         mkdir -p $SDK_ROOT/tools/bin
-        ln -s $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager $SDK_ROOT/tools/bin/sdkmanager
-        ln -s $SDK_ROOT/cmdline-tools/latest/bin/avdmanager $SDK_ROOT/tools/bin/avdmanager
+        ln -sf $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager $SDK_ROOT/tools/bin/sdkmanager
+        ln -sf $SDK_ROOT/cmdline-tools/latest/bin/avdmanager $SDK_ROOT/tools/bin/avdmanager
 
     # Aceita as licenças do Android SDK no caminho CORRETO que o buildozer realmente usa
     - name: Pre-accept Android SDK licenses
@@ -50,6 +81,16 @@ jobs:
     - name: Build APK
       run: |
         yes | buildozer -v android debug || buildozer -v android debug
+
+    # Se o build falhar mesmo assim, esse passo sobe os logs completos do buildozer
+    # como artefato baixável, então você não precisa mais caçar erro rolando o console do GitHub.
+    - name: Upload full build log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildozer-log
+        path: .buildozer/**/*.log
+        if-no-files-found: ignore
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
